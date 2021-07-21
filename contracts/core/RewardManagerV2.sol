@@ -8,7 +8,7 @@ import '../general/BalanceWrapper.sol';
 import '../libraries/Math.sol';
 import '../libraries/SafeMath.sol';
 import '../interfaces/IERC20.sol';
-import '../interfaces/IStakeManager.sol';
+import '../interfaces/IPlanManager.sol';
 import '../interfaces/IRewardManagerV2.sol';
 
 /**
@@ -36,6 +36,7 @@ contract RewardManagerV2 is BalanceWrapper, ArmorModule, IRewardManagerV2 {
     }
     struct PoolInfo {
         address protocol; // Address of protocol contract.
+        uint256 totalStaked; // Total staked amount in the pool
         uint256 allocPoint; // Allocation of protocol.
         uint256 lastRewardBlock; // Last block number that SUSHIs distribution occurs.
         uint256 accArmorPerShare; // Accumulated SUSHIs per share, times 1e12. See below.
@@ -83,10 +84,35 @@ contract RewardManagerV2 is BalanceWrapper, ArmorModule, IRewardManagerV2 {
         armorPerBlockUpdatedEpoch.push(block.number);
     }
 
-    function deposit(address _user, address _protocol, uint256 _amount) override public onlyModules("BALANCE", "STAKE"){
-        PoolInfo storage pool = poolInfo[_protocol];
-        UserInfo storage user = userInfo[_protocol][_user];
+    function updateAllocPoint(address _protocol, uint256 _allocPoint) override external onlyModule("PLAN")  {
         updatePool(_protocol);
+        PoolInfo storage pool = poolInfo[_protocol];
+        if (poolInfo[_protocol].protocol == address(0)) {
+            initPool(_protocol);
+        } else {
+            totalAllocPoint = totalAllocPoint.sub(pool.allocPoint).add(_allocPoint);
+            pool.allocPoint = _allocPoint;
+        }
+    }
+
+    function initPool(address _protocol) override public onlyModules("PLAN", "STAKE")  {
+        PoolInfo storage pool = poolInfo[_protocol];
+        require(pool.protocol == address(0), "already initialized");
+        pool.protocol = _protocol;
+        pool.lastRewardBlock = block.number;
+        pool.lastArmorPerBlockIdx = armorPerBlocks.length.sub(1);
+        pool.allocPoint = IPlanManager(_master.getModule("PLAN")).totalUsedCover(_protocol);
+        totalAllocPoint = totalAllocPoint.add(pool.allocPoint);
+    }
+
+    function deposit(address _user, address _protocol, uint256 _amount) override external onlyModules("BALANCE", "STAKE") {
+        PoolInfo storage pool = poolInfo[_protocol];
+        if (pool.protocol == address(0)) {
+            initPool(_protocol);
+        } else {
+            updatePool(_protocol);
+        }
+        UserInfo storage user = userInfo[_protocol][_user];
         if (user.amount > 0) {
             uint256 pending =
                 user.amount.mul(pool.accArmorPerShare).div(1e12).sub(
@@ -96,6 +122,7 @@ contract RewardManagerV2 is BalanceWrapper, ArmorModule, IRewardManagerV2 {
         }
         user.amount = user.amount.add(_amount);
         user.rewardDebt = user.amount.mul(pool.accArmorPerShare).div(1e12);
+        pool.totalStaked = pool.totalStaked.add(_amount);
     }
     
     function withdraw(address _user, address _protocol, uint256 _amount) override public onlyModules("BALANCE", "STAKE"){
@@ -110,6 +137,7 @@ contract RewardManagerV2 is BalanceWrapper, ArmorModule, IRewardManagerV2 {
         safeArmorTransfer(_user, pending);
         user.amount = user.amount.sub(_amount);
         user.rewardDebt = user.amount.mul(pool.accArmorPerShare).div(1e12);
+        pool.totalStaked = pool.totalStaked.sub(_amount);
     }
 
     function claimReward(address _protocol) public {
@@ -148,19 +176,17 @@ contract RewardManagerV2 is BalanceWrapper, ArmorModule, IRewardManagerV2 {
         if (block.number <= pool.lastRewardBlock) {
             return;
         }
-        IStakeManager stakeManager = IStakeManager(_master.getModule("STAKE"));
-        uint256 totalStaked = stakeManager.totalStakedAmount(_protocol);
-        if (totalStaked == 0) {
+        if (pool.totalStaked == 0) {
             pool.lastRewardBlock = block.number;
             return;
         }
 
         uint256 armorReward = getPoolReward(_protocol);
         pool.accArmorPerShare = pool.accArmorPerShare.add(
-            armorReward.mul(1e12).div(totalStaked)
+            armorReward.mul(1e12).div(pool.totalStaked)
         );
         pool.lastRewardBlock = block.number;
-        pool.lastArmorPerBlockIdx = armorPerBlocks.length - 1;
+        pool.lastArmorPerBlockIdx = armorPerBlocks.length.sub(1);
     }
     
     function safeArmorTransfer(address _to, uint256 _amount) internal {
