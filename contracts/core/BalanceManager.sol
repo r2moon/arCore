@@ -5,6 +5,7 @@ import '../interfaces/IERC20.sol';
 import '../interfaces/IBalanceManager.sol';
 import '../interfaces/IPlanManager.sol';
 import '../interfaces/IRewardManager.sol';
+import '../interfaces/IRewardManagerV2.sol';
 import '../interfaces/IUtilizationFarm.sol';
 /**
  * @dev BorrowManager is where borrowers do all their interaction and it holds funds
@@ -192,8 +193,8 @@ contract BalanceManager is ArmorModule, IBalanceManager, BalanceExpireTracker {
        uint256 rewardBalance = balances[getModule("REWARD")].lastBalance;
        // If staking contracts are sent too low of a reward, it can mess up distribution.
        if (rewardBalance >= 1 ether / 10) {
-           IRewardManager(getModule("REWARD")).notifyRewardAmount{value: rewardBalance}(rewardBalance);
-           balances[getModule("REWARD")].lastBalance = 0;
+           IRewardManagerV2(getModule("REWARDV2")).notifyRewardAmount{value: rewardBalance}(rewardBalance);
+           balances[getModule("REWARDV2")].lastBalance = 0;
        }
     }
 

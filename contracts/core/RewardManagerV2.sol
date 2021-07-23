@@ -19,6 +19,8 @@ import '../interfaces/IRewardManagerV2.sol';
 contract RewardManagerV2 is BalanceWrapper, ArmorModule, IRewardManagerV2 {
     using SafeERC20 for IERC20;
 
+    event RewardPaid(address indexed user, uint256 reward, uint256 timestamp);
+
     struct UserInfo {
         uint256 amount; // How many LP tokens the user has provided.
         uint256 rewardDebt; // Reward debt. See explanation below.
@@ -50,36 +52,40 @@ contract RewardManagerV2 is BalanceWrapper, ArmorModule, IRewardManagerV2 {
     uint256[] public armorPerBlocks;
     uint256[] public armorPerBlockUpdatedEpoch;
 
-    uint256 public rewardPeriod = 7 days;
+    uint256 public rewardDuration = 7 days;
+    uint256 public lastReward;
 
     mapping(address => PoolInfo) public poolInfo;
 
     mapping(address => mapping(address => UserInfo)) public userInfo;
 
-    constructor(IERC20 _rewardToken) public {
-        require(address(_rewardToken) != address(0), "zero");
-        rewardToken = _rewardToken;
+    function initialize(address _armorMaster, address _rewardToken)
+      external
+      override
+    {
+        // require(address(stakeManager) == address(0), "Contract is already initialized.");
+        initializeModule(_armorMaster);
+        rewardToken = IERC20(_rewardToken);
     }
 
-    function initializeRewardManagerV2(uint256 _armorPerBlock) external {
-        require(armorPerBlocks.length == 0, "already initialized");
-        addArmorPerBlock(_armorPerBlock);
-    }
+    function notifyRewardAmount(uint256 reward) override external onlyModule("BALANCE") payable {
+        if (address(rewardToken) == address(0)){
+            require(msg.value == reward, "Correct reward was not sent.");
+        }
+        else {
+            require(msg.value == 0, "Do not send ETH");
+            rewardToken.safeTransferFrom(msg.sender, address(this), reward);
+        }
 
-    function addArmorPerBlock(uint256 _armorPerBlock) public {
         uint remainingReward;
         if (armorPerBlocks.length > 0) {
             uint256 lastIdx = armorPerBlocks.length - 1;
-            if (block.number < armorPerBlockUpdatedEpoch[lastIdx].add(rewardPeriod)) {
-                remainingReward = armorPerBlockUpdatedEpoch[lastIdx].add(rewardPeriod).sub(block.number).mul(armorPerBlocks[lastIdx]);
+            uint256 usedReward = block.number.sub(armorPerBlockUpdatedEpoch[lastIdx]).mul(armorPerBlocks[lastIdx]);
+            if (usedReward < lastReward) {
+                remainingReward = lastReward.sub(usedReward);
             }
         }
-        uint256 nextPeriodReward = _armorPerBlock.mul(rewardPeriod);
-        if (remainingReward > nextPeriodReward) {
-            safeArmorTransfer(msg.sender, remainingReward.sub(nextPeriodReward));
-        } else if (remainingReward < nextPeriodReward) {
-            rewardToken.safeTransferFrom(msg.sender, address(this), nextPeriodReward.sub(remainingReward));
-        }
+        uint256 _armorPerBlock = reward.add(remainingReward).div(rewardDuration);
         armorPerBlocks.push(_armorPerBlock);
         armorPerBlockUpdatedEpoch.push(block.number);
     }
@@ -118,7 +124,7 @@ contract RewardManagerV2 is BalanceWrapper, ArmorModule, IRewardManagerV2 {
                 user.amount.mul(pool.accArmorPerShare).div(1e12).sub(
                     user.rewardDebt
                 );
-            safeArmorTransfer(_user, pending);
+            safeRewardTransfer(_user, pending);
         }
         user.amount = user.amount.add(_amount);
         user.rewardDebt = user.amount.mul(pool.accArmorPerShare).div(1e12);
@@ -134,7 +140,7 @@ contract RewardManagerV2 is BalanceWrapper, ArmorModule, IRewardManagerV2 {
             user.amount.mul(pool.accArmorPerShare).div(1e12).sub(
                 user.rewardDebt
             );
-        safeArmorTransfer(_user, pending);
+        safeRewardTransfer(_user, pending);
         user.amount = user.amount.sub(_amount);
         user.rewardDebt = user.amount.mul(pool.accArmorPerShare).div(1e12);
         pool.totalStaked = pool.totalStaked.sub(_amount);
@@ -149,7 +155,7 @@ contract RewardManagerV2 is BalanceWrapper, ArmorModule, IRewardManagerV2 {
             user.amount.mul(pool.accArmorPerShare).div(1e12).sub(
                 user.rewardDebt
             );
-        safeArmorTransfer(msg.sender, pending);
+        safeRewardTransfer(msg.sender, pending);
         user.rewardDebt = user.amount.mul(pool.accArmorPerShare).div(1e12);
     }
 
@@ -189,12 +195,16 @@ contract RewardManagerV2 is BalanceWrapper, ArmorModule, IRewardManagerV2 {
         pool.lastArmorPerBlockIdx = armorPerBlocks.length.sub(1);
     }
     
-    function safeArmorTransfer(address _to, uint256 _amount) internal {
-        uint256 armorBal = rewardToken.balanceOf(address(this));
-        if (_amount > armorBal) {
-            rewardToken.safeTransfer(_to, armorBal);
+    function safeRewardTransfer(address _to, uint256 _amount) internal {
+        uint reward;
+        if (address(rewardToken) == address(0)) {
+            reward = Math.min(address(this).balance, _amount);
+            payable(_to).transfer(reward);
         } else {
-            rewardToken.safeTransfer(_to, _amount);
+            reward = Math.min(rewardToken.balanceOf(address(this)), _amount);
+            rewardToken.safeTransfer(_to, reward);
         }
+
+        emit RewardPaid(_to, reward, block.timestamp);
     }
 }
