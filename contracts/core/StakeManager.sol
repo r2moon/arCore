@@ -345,15 +345,19 @@ contract StakeManager is ArmorModule, ExpireTracker, IStakeManager {
     function _subtractCovers(address _user, uint256 _nftId, uint256 _coverAmount, uint256 _coverPrice, address _protocol)
       internal
     {
-        uint256 remaining;
-        uint256 oldRewardBalance = IBalanceWrapper(getModule("REWARD")).balanceOf(_user);
-        if (oldRewardBalance > 0) {
-            if (oldRewardBalance <= _coverPrice) {
-                IRewardManager(getModule("REWARD")).withdraw(_user, oldRewardBalance, _nftId);
-                remaining = _coverPrice.sub(oldRewardBalance);
-            } else {
-                IRewardManager(getModule("REWARD")).withdraw(_user, _coverPrice, _nftId);
-            }
+        uint256 remaining = _coverPrice;
+        address oldRewardModule = getModule("REWARD");
+        if (oldRewardModule != address(0)) {
+          uint256 oldRewardBalance = IBalanceWrapper(oldRewardModule).balanceOf(_user);
+          if (oldRewardBalance > 0) {
+              if (oldRewardBalance <= _coverPrice) {
+                  IRewardManager(oldRewardModule).withdraw(_user, oldRewardBalance, _nftId);
+                  remaining = _coverPrice.sub(oldRewardBalance);
+              } else {
+                  IRewardManager(oldRewardModule).withdraw(_user, _coverPrice, _nftId);
+                  remaining = 0;
+              }
+          }
         }
         if (remaining > 0) {
             IRewardManagerV2(getModule("REWARDV2")).withdraw(_user, _protocol, remaining);
