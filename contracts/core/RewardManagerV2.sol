@@ -10,6 +10,7 @@ import '../libraries/SafeMath.sol';
 import '../interfaces/IERC20.sol';
 import '../interfaces/IPlanManager.sol';
 import '../interfaces/IRewardManagerV2.sol';
+import "hardhat/console.sol";
 
 /**
  * @dev RewardManagerV2 is a updated RewardManager to distribute rewards.
@@ -69,6 +70,17 @@ contract RewardManagerV2 is BalanceWrapper, ArmorModule, IRewardManagerV2 {
         rewardCycleBlocks = _rewardCycleBlocks;
     }
 
+    function initPool(address _protocol) override public onlyModules("PLAN", "STAKE")  {
+        require(_protocol != address(0), "zero address!");
+        PoolInfo storage pool = poolInfo[_protocol];
+        require(pool.protocol == address(0), "already initialized");
+        pool.protocol = _protocol;
+        pool.lastRewardBlock = block.number;
+        pool.lastRewardPerBlockIdx = rewardPerBlocks.length > 0 ? rewardPerBlocks.length.sub(1) : 0;
+        pool.allocPoint = IPlanManager(_master.getModule("PLAN")).totalUsedCover(_protocol);
+        totalAllocPoint = totalAllocPoint.add(pool.allocPoint);
+    }
+
     function notifyRewardAmount(uint256 reward) override external payable onlyModule("BALANCE") {
         if (address(rewardToken) == address(0)){
             require(msg.value == reward, "Correct reward was not sent");
@@ -93,27 +105,17 @@ contract RewardManagerV2 is BalanceWrapper, ArmorModule, IRewardManagerV2 {
     }
 
     function updateAllocPoint(address _protocol, uint256 _allocPoint) override external onlyModule("PLAN")  {
-        updatePool(_protocol);
         PoolInfo storage pool = poolInfo[_protocol];
         if (poolInfo[_protocol].protocol == address(0)) {
             initPool(_protocol);
         } else {
+            updatePool(_protocol);
             totalAllocPoint = totalAllocPoint.sub(pool.allocPoint).add(_allocPoint);
             pool.allocPoint = _allocPoint;
         }
     }
 
-    function initPool(address _protocol) override public onlyModules("PLAN", "STAKE")  {
-        PoolInfo storage pool = poolInfo[_protocol];
-        require(pool.protocol == address(0), "already initialized");
-        pool.protocol = _protocol;
-        pool.lastRewardBlock = block.number;
-        pool.lastRewardPerBlockIdx = rewardPerBlocks.length.sub(1);
-        pool.allocPoint = IPlanManager(_master.getModule("PLAN")).totalUsedCover(_protocol);
-        totalAllocPoint = totalAllocPoint.add(pool.allocPoint);
-    }
-
-    function deposit(address _user, address _protocol, uint256 _amount) override external onlyModules("BALANCE", "STAKE") {
+    function deposit(address _user, address _protocol, uint256 _amount) override external onlyModule("STAKE") {
         PoolInfo storage pool = poolInfo[_protocol];
         if (pool.protocol == address(0)) {
             initPool(_protocol);
@@ -172,7 +174,7 @@ contract RewardManagerV2 is BalanceWrapper, ArmorModule, IRewardManagerV2 {
         uint256 from = Math.max(pool.lastRewardBlock, rewardUpdatedBlocks[0]);
         for (uint256 i = pool.lastRewardPerBlockIdx; i < rewardPerBlocks.length - 1; i += 1) {
             uint256 to = rewardUpdatedBlocks[i + 1];
-            reward = reward.add(to.sub(from).mul(rewardPerBlocks[i]));
+            reward = reward.add(Math.min(to.sub(from), rewardCycleBlocks).mul(rewardPerBlocks[i]));
             from = to;
         }
         reward = reward.add(block.number.sub(from).mul(rewardPerBlocks[rewardPerBlocks.length - 1]));

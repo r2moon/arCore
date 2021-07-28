@@ -55,7 +55,7 @@ contract PlanManager is ArmorModule, IPlanManager {
         }
         _;
     }
-    
+
     function initialize(
         address _armorMaster
     ) external override {

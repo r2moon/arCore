@@ -6,6 +6,8 @@ import "../interfaces/IBalanceManager.sol";
 
 contract PlanManagerMock {
   mapping(address => uint256) public prices;
+  mapping(address => uint256) public totalUsedCover;
+
   bool coverage;
   event UpdateExpireTime(address _user);
   receive() external payable{
@@ -26,7 +28,7 @@ contract PlanManagerMock {
   function checkCoverage(address _user, address _sc, uint256 _time, uint256 _amount) external view returns(uint256 index, bool check){
     return (0, coverage);
   }
-  function totalUsedCover(address _scAddress) external view returns (uint256) {
-    return 0;
+  function setTotalUsedCover(address _scAddress, uint _cover) external {
+    totalUsedCover[_scAddress] = _cover;
   }
 }

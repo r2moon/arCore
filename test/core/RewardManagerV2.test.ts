@@ -7,19 +7,22 @@ import { increase, mineBlocks, getBlockNumber } from "../utils";
 function stringToBytes32(str: string): string {
   return ethers.utils.formatBytes32String(str);
 }
+function generateRandomAddress(): string {
+  return ethers.Wallet.createRandom().address;
+}
+
 describe("RewardManagerV2", function () {
   let accounts: Signer[];
   let rewardManagerV2: Contract;
   let rewardManagerV2ETH: Contract;
   let stakeManager: Signer;
+  let planManager: Contract;
   let token: Contract;
   let master: Contract;
 
   let user: Signer;
   let owner: Signer;
   let rewardDistribution: Signer;
-  let amount = 1000000;
-  let rewardAmount = amount * 100;
   let rewardCycleBlocks = BigNumber.from("8640"); // 1 day
 
   beforeEach(async function () {
@@ -49,6 +52,10 @@ describe("RewardManagerV2", function () {
       .connect(owner)
       .initialize(master.address, constants.AddressZero, rewardCycleBlocks);
 
+    const PlanFactory = await ethers.getContractFactory("PlanManager");
+    planManager = await PlanFactory.deploy();
+    await planManager.connect(owner).initialize(master.address);
+
     await master
       .connect(owner)
       .registerModule(
@@ -63,6 +70,10 @@ describe("RewardManagerV2", function () {
         stringToBytes32("BALANCE"),
         await rewardDistribution.getAddress()
       );
+
+    await master
+      .connect(owner)
+      .registerModule(stringToBytes32("PLAN"), planManager.address);
   });
 
   describe("#initialize()", function () {
@@ -71,6 +82,84 @@ describe("RewardManagerV2", function () {
         rewardManagerV2
           .connect(owner)
           .initialize(master.address, token.address, rewardCycleBlocks)
+      ).to.be.revertedWith("already initialized");
+    });
+  });
+
+  describe("#initPool()", function () {
+    const protocol1 = generateRandomAddress();
+    const protocol1Cover = BigNumber.from("1000");
+    const protocol2 = generateRandomAddress();
+    const protocol2Cover = BigNumber.from("2000");
+
+    beforeEach(async function () {
+      const PlanMockFactory = await ethers.getContractFactory(
+        "PlanManagerMock"
+      );
+      planManager = await PlanMockFactory.deploy();
+      await master
+        .connect(owner)
+        .registerModule(stringToBytes32("PLAN"), planManager.address);
+      await planManager.setTotalUsedCover(protocol1, protocol1Cover);
+      await planManager.setTotalUsedCover(protocol2, protocol2Cover);
+    });
+
+    it("should fail if msg.sender is not stake manager nor balance manager", async function () {
+      await expect(
+        rewardManagerV2.connect(user).initPool(protocol1)
+      ).to.be.revertedWith("only module PLAN or STAKE can call this function");
+    });
+
+    it("should fail if protocol is zero address", async function () {
+      await expect(
+        rewardManagerV2.connect(stakeManager).initPool(constants.AddressZero)
+      ).to.be.revertedWith("zero address!");
+    });
+
+    it("should initialize pool", async function () {
+      await rewardManagerV2.connect(stakeManager).initPool(protocol1);
+      let currentBlock = await getBlockNumber();
+      expect(await rewardManagerV2.totalAllocPoint()).to.equal(protocol1Cover);
+      let pool = await rewardManagerV2.poolInfo(protocol1);
+      expect(pool.protocol).to.equal(protocol1);
+      expect(pool.totalStaked).to.equal(0);
+      expect(pool.allocPoint).to.equal(protocol1Cover);
+      expect(pool.lastRewardBlock).to.equal(currentBlock);
+      expect(pool.lastRewardPerBlockIdx).to.equal(0);
+      expect(pool.accArmorPerShare).to.equal(0);
+
+      const rewardAmount = ethers.utils.parseUnits("100", 18);
+      await token
+        .connect(owner)
+        .transfer(await rewardDistribution.getAddress(), rewardAmount);
+      await token
+        .connect(rewardDistribution)
+        .approve(rewardManagerV2.address, rewardAmount);
+      await rewardManagerV2
+        .connect(rewardDistribution)
+        .notifyRewardAmount(rewardAmount.div(BigNumber.from("2")));
+      await rewardManagerV2
+        .connect(rewardDistribution)
+        .notifyRewardAmount(rewardAmount.div(BigNumber.from("2")));
+
+      await rewardManagerV2.connect(stakeManager).initPool(protocol2);
+      currentBlock = await getBlockNumber();
+      expect(await rewardManagerV2.totalAllocPoint()).to.equal(
+        protocol1Cover.add(protocol2Cover)
+      );
+      pool = await rewardManagerV2.poolInfo(protocol2);
+      expect(pool.protocol).to.equal(protocol2);
+      expect(pool.totalStaked).to.equal(0);
+      expect(pool.allocPoint).to.equal(protocol2Cover);
+      expect(pool.lastRewardBlock).to.equal(currentBlock);
+      expect(pool.lastRewardPerBlockIdx).to.equal(1);
+      expect(pool.accArmorPerShare).to.equal(0);
+    });
+
+    it("should fail to initialize pool again", async function () {
+      await rewardManagerV2.connect(stakeManager).initPool(protocol1);
+      await expect(
+        rewardManagerV2.connect(stakeManager).initPool(protocol1)
       ).to.be.revertedWith("already initialized");
     });
   });
@@ -262,40 +351,41 @@ describe("RewardManagerV2", function () {
     });
   });
 
-  describe("#deposit()", function () {
-    const NFTID = 1;
-    beforeEach(async function () {
-      await token
-        .connect(owner)
-        .mint(await rewardDistribution.getAddress(), rewardAmount);
-      await token
-        .connect(rewardDistribution)
-        .approve(rewardManagerV2.address, rewardAmount);
-      await rewardManagerV2
-        .connect(rewardDistribution)
-        .notifyRewardAmount(rewardAmount);
-    });
-    it("should fail if msg.sender is not stake manager", async function () {
-      await expect(
-        rewardManagerV2
-          .connect(owner)
-          .stake(await user.getAddress(), amount, NFTID)
-      ).to.be.revertedWith("only module STAKE can call this function");
-    });
+  // describe("#deposit()", function () {
+  //   const rewardAmount = ethers.utils.parseUnits("100", 18);
 
-    it("should increase total supply", async function () {
-      await rewardManagerV2
-        .connect(stakeManager)
-        .stake(await user.getAddress(), amount, NFTID);
-      expect(await rewardManagerV2.totalSupply()).to.be.equal(amount);
-    });
+  //   beforeEach(async function () {
+  //     await token
+  //       .connect(owner)
+  //       .mint(await rewardDistribution.getAddress(), rewardAmount);
+  //     await token
+  //       .connect(rewardDistribution)
+  //       .approve(rewardManagerV2.address, rewardAmount);
+  //     await rewardManagerV2
+  //       .connect(rewardDistribution)
+  //       .notifyRewardAmount(rewardAmount);
+  //   });
+  //   it("should fail if msg.sender is not stake manager", async function () {
+  //     await expect(
+  //       rewardManagerV2
+  //         .connect(owner)
+  //         .deposit(await user.getAddress(), amount, NFTID)
+  //     ).to.be.revertedWith("only module STAKE can call this function");
+  //   });
 
-    it("should increase balanceOf user", async function () {
-      const address = await user.getAddress();
-      await rewardManagerV2.connect(stakeManager).stake(address, amount, NFTID);
-      expect(await rewardManagerV2.balanceOf(address)).to.be.equal(amount);
-    });
-  });
+  //   it("should increase total supply", async function () {
+  //     await rewardManagerV2
+  //       .connect(stakeManager)
+  //       .stake(await user.getAddress(), amount, NFTID);
+  //     expect(await rewardManagerV2.totalSupply()).to.be.equal(amount);
+  //   });
+
+  //   it("should increase balanceOf user", async function () {
+  //     const address = await user.getAddress();
+  //     await rewardManagerV2.connect(stakeManager).stake(address, amount, NFTID);
+  //     expect(await rewardManagerV2.balanceOf(address)).to.be.equal(amount);
+  //   });
+  // });
 
   // describe("#withdraw()", function () {
   //   const NFTID = 1;
