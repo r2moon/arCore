@@ -52,6 +52,7 @@ contract RewardManagerV2 is BalanceWrapper, ArmorModule, IRewardManagerV2 {
         initializeModule(_armorMaster);
         require (_rewardCycleBlocks > 0, "Invalid cycle blocks");
         rewardCycle = _rewardCycleBlocks;
+        lastRewardBlock = block.number;
     }
 
     function notifyRewardAmount() override external payable onlyModule("BALANCE") {
@@ -60,7 +61,7 @@ contract RewardManagerV2 is BalanceWrapper, ArmorModule, IRewardManagerV2 {
         uint remainingReward = lastReward > usedReward ? lastReward.sub(usedReward) : 0;
         lastReward = msg.value.add(remainingReward);
         usedReward = 0;
-        rewardCycleEnd = lastRewardBlock.add(rewardCycle);
+        rewardCycleEnd = block.number.add(rewardCycle);
         rewardPerBlock = lastReward.div(rewardCycle);
     }
 
@@ -69,7 +70,8 @@ contract RewardManagerV2 is BalanceWrapper, ArmorModule, IRewardManagerV2 {
             return;
         }
 
-        if (totalAllocPoint == 0) {
+        if (totalAllocPoint == 0 || rewardCycleEnd == 0) {
+            lastRewardBlock = block.number;
             return;
         }
 
@@ -179,6 +181,7 @@ contract RewardManagerV2 is BalanceWrapper, ArmorModule, IRewardManagerV2 {
             poolReward.mul(1e12).div(pool.totalStaked)
         );
         pool.lastRewardBlock = block.number;
+        pool.rewardDebt = pool.totalStaked.mul(accEthPerAlloc).div(1e12);
     }
     
     function safeRewardTransfer(address _to, uint256 _amount) internal {
