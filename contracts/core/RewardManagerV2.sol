@@ -3,11 +3,9 @@
 pragma solidity ^0.6.6;
 
 import '../general/ArmorModule.sol';
-import '../general/SafeERC20.sol';
 import '../general/BalanceWrapper.sol';
 import '../libraries/Math.sol';
 import '../libraries/SafeMath.sol';
-import '../interfaces/IERC20.sol';
 import '../interfaces/IPlanManager.sol';
 import '../interfaces/IRewardManagerV2.sol';
 import "hardhat/console.sol";
@@ -18,8 +16,6 @@ import "hardhat/console.sol";
 **/
 
 contract RewardManagerV2 is BalanceWrapper, ArmorModule, IRewardManagerV2 {
-    using SafeERC20 for IERC20;
-
     event RewardPaid(address indexed user, uint256 reward, uint256 timestamp);
 
     struct UserInfo {
@@ -35,8 +31,6 @@ contract RewardManagerV2 is BalanceWrapper, ArmorModule, IRewardManagerV2 {
         uint256 rewardDebt; // Pool Reward debt. 
     }
 
-    IERC20 public rewardToken;
-
     uint256 public totalAllocPoint;
     uint256 public accEthPerAlloc;
     uint256 public lastRewardBlock;
@@ -51,28 +45,20 @@ contract RewardManagerV2 is BalanceWrapper, ArmorModule, IRewardManagerV2 {
 
     mapping(address => mapping(address => UserInfo)) public userInfo;
 
-    function initialize(address _armorMaster, address _rewardToken, uint _rewardCycleBlocks)
+    function initialize(address _armorMaster, uint _rewardCycleBlocks)
       external
       override
     {
         initializeModule(_armorMaster);
-        rewardToken = IERC20(_rewardToken);
         require (_rewardCycleBlocks > 0, "Invalid cycle blocks");
         rewardCycle = _rewardCycleBlocks;
     }
 
-    function notifyRewardAmount(uint256 reward) override external payable onlyModule("BALANCE") {
-        if (address(rewardToken) == address(0)){
-            require(msg.value == reward, "Correct reward was not sent");
-        }
-        else {
-            require(msg.value == 0, "Do not send ETH");
-            rewardToken.safeTransferFrom(msg.sender, address(this), reward);
-        }
-
+    function notifyRewardAmount() override external payable onlyModule("BALANCE") {
+        require(msg.value > 0, "Invalid reward");
         updateReward();
         uint remainingReward = lastReward > usedReward ? lastReward.sub(usedReward) : 0;
-        lastReward = reward.add(remainingReward);
+        lastReward = msg.value.add(remainingReward);
         usedReward = 0;
         rewardCycleEnd = lastRewardBlock.add(rewardCycle);
         rewardPerBlock = lastReward.div(rewardCycle);
@@ -196,14 +182,8 @@ contract RewardManagerV2 is BalanceWrapper, ArmorModule, IRewardManagerV2 {
     }
     
     function safeRewardTransfer(address _to, uint256 _amount) internal {
-        uint reward;
-        if (address(rewardToken) == address(0)) {
-            reward = Math.min(address(this).balance, _amount);
-            payable(_to).transfer(reward);
-        } else {
-            reward = Math.min(rewardToken.balanceOf(address(this)), _amount);
-            rewardToken.safeTransfer(_to, reward);
-        }
+        uint reward = Math.min(address(this).balance, _amount);
+        payable(_to).transfer(reward);
 
         emit RewardPaid(_to, reward, block.timestamp);
     }

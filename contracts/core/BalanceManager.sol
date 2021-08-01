@@ -193,7 +193,7 @@ contract BalanceManager is ArmorModule, IBalanceManager, BalanceExpireTracker {
        uint256 rewardBalance = balances[getModule("REWARD")].lastBalance;
        // If staking contracts are sent too low of a reward, it can mess up distribution.
        if (rewardBalance >= 1 ether / 10) {
-           IRewardManagerV2(getModule("REWARDV2")).notifyRewardAmount{value: rewardBalance}(rewardBalance);
+           IRewardManagerV2(getModule("REWARDV2")).notifyRewardAmount{value: rewardBalance}();
            balances[getModule("REWARDV2")].lastBalance = 0;
        }
     }

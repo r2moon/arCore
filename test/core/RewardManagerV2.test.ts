@@ -24,7 +24,7 @@ describe("RewardManagerV2", function () {
   let bob: Signer;
   let owner: Signer;
   let rewardDistribution: Signer;
-  let rewardCycleBlocks = BigNumber.from("8640"); // 1 day
+  let rewardCycle = BigNumber.from("8640"); // 1 day
 
   const protocol1 = generateRandomAddress();
   const protocol1Cover = BigNumber.from("1000");
@@ -50,14 +50,14 @@ describe("RewardManagerV2", function () {
     rewardManagerV2 = await RewardFactoryV2.deploy();
     await rewardManagerV2
       .connect(owner)
-      .initialize(master.address, token.address, rewardCycleBlocks);
+      .initialize(master.address, token.address, rewardCycle);
     await master
       .connect(owner)
       .registerModule(stringToBytes32("REWARDV2"), rewardManagerV2.address);
     rewardManagerV2ETH = await RewardFactoryV2.deploy();
     await rewardManagerV2ETH
       .connect(owner)
-      .initialize(master.address, constants.AddressZero, rewardCycleBlocks);
+      .initialize(master.address, constants.AddressZero, rewardCycle);
 
     const PlanMockFactory = await ethers.getContractFactory("PlanManagerMock");
     planManager = await PlanMockFactory.deploy();
@@ -89,7 +89,7 @@ describe("RewardManagerV2", function () {
       await expect(
         rewardManagerV2
           .connect(owner)
-          .initialize(master.address, token.address, rewardCycleBlocks)
+          .initialize(master.address, token.address, rewardCycle)
       ).to.be.revertedWith("already initialized");
     });
   });
@@ -220,7 +220,7 @@ describe("RewardManagerV2", function () {
         rewardAmount
       );
       expect(await rewardManagerV2.rewardPerBlocks(0)).to.equal(
-        rewardAmount.div(rewardCycleBlocks)
+        rewardAmount.div(rewardCycle)
       );
       expect(await rewardManagerV2.rewardUpdatedBlocks(0)).to.equal(
         currentBlock
@@ -235,7 +235,7 @@ describe("RewardManagerV2", function () {
         await owner.provider.getBalance(rewardManagerV2ETH.address)
       ).to.equal(rewardAmount);
       expect(await rewardManagerV2ETH.rewardPerBlocks(0)).to.equal(
-        rewardAmount.div(rewardCycleBlocks)
+        rewardAmount.div(rewardCycle)
       );
       expect(await rewardManagerV2ETH.rewardUpdatedBlocks(0)).to.equal(
         currentBlock
@@ -261,14 +261,14 @@ describe("RewardManagerV2", function () {
       let currentBlock = await getBlockNumber();
       await mineBlocks(100);
       let remaining = rewardAmount.sub(
-        rewardAmount.div(rewardCycleBlocks).mul(BigNumber.from("101"))
+        rewardAmount.div(rewardCycle).mul(BigNumber.from("101"))
       );
       await rewardManagerV2
         .connect(rewardDistribution)
         .notifyRewardAmount(rewardAmount2);
       currentBlock = await getBlockNumber();
       expect(await rewardManagerV2.rewardPerBlocks(1)).to.equal(
-        rewardAmount2.add(remaining).div(rewardCycleBlocks)
+        rewardAmount2.add(remaining).div(rewardCycle)
       );
       expect(await rewardManagerV2.rewardUpdatedBlocks(1)).to.equal(
         currentBlock
@@ -281,14 +281,14 @@ describe("RewardManagerV2", function () {
       currentBlock = await getBlockNumber();
       await mineBlocks(100);
       remaining = rewardAmount.sub(
-        rewardAmount.div(rewardCycleBlocks).mul(BigNumber.from("101"))
+        rewardAmount.div(rewardCycle).mul(BigNumber.from("101"))
       );
       await rewardManagerV2ETH
         .connect(rewardDistribution)
         .notifyRewardAmount(rewardAmount2, { value: rewardAmount2 });
       currentBlock = await getBlockNumber();
       expect(await rewardManagerV2ETH.rewardPerBlocks(1)).to.equal(
-        rewardAmount2.add(remaining).div(rewardCycleBlocks)
+        rewardAmount2.add(remaining).div(rewardCycle)
       );
       expect(await rewardManagerV2ETH.rewardUpdatedBlocks(1)).to.equal(
         currentBlock
@@ -316,13 +316,13 @@ describe("RewardManagerV2", function () {
         .connect(rewardDistribution)
         .notifyRewardAmount(rewardAmount, { value: rewardAmount });
 
-      await mineBlocks(rewardCycleBlocks.toNumber() + 10);
+      await mineBlocks(rewardCycle.toNumber() + 10);
       await rewardManagerV2
         .connect(rewardDistribution)
         .notifyRewardAmount(rewardAmount2);
       let currentBlock = await getBlockNumber();
       expect(await rewardManagerV2.rewardPerBlocks(1)).to.equal(
-        rewardAmount2.div(rewardCycleBlocks)
+        rewardAmount2.div(rewardCycle)
       );
       expect(await rewardManagerV2.rewardUpdatedBlocks(1)).to.equal(
         currentBlock
@@ -334,7 +334,7 @@ describe("RewardManagerV2", function () {
         .notifyRewardAmount(rewardAmount2, { value: rewardAmount2 });
       currentBlock = await getBlockNumber();
       expect(await rewardManagerV2ETH.rewardPerBlocks(1)).to.equal(
-        rewardAmount2.div(rewardCycleBlocks)
+        rewardAmount2.div(rewardCycle)
       );
       expect(await rewardManagerV2ETH.rewardUpdatedBlocks(1)).to.equal(
         currentBlock
@@ -419,7 +419,7 @@ describe("RewardManagerV2", function () {
 
       await mineBlocks(100);
       const poolReward = rewardAmount
-        .div(rewardCycleBlocks)
+        .div(rewardCycle)
         .mul(BigNumber.from("101"))
         .mul(protocol1Cover)
         .div(protocol1Cover.add(protocol2Cover));
@@ -489,7 +489,7 @@ describe("RewardManagerV2", function () {
 
       await mineBlocks(100);
       const poolReward = rewardAmount
-        .div(rewardCycleBlocks)
+        .div(rewardCycle)
         .mul(BigNumber.from("101"))
         .mul(protocol1Cover)
         .div(protocol1Cover.add(protocol2Cover));
@@ -544,7 +544,7 @@ describe("RewardManagerV2", function () {
     it("should claim reward", async function () {
       await mineBlocks(100);
       const poolReward = rewardAmount
-        .div(rewardCycleBlocks)
+        .div(rewardCycle)
         .mul(BigNumber.from("101"))
         .mul(protocol1Cover)
         .div(protocol1Cover.add(protocol2Cover));
@@ -595,7 +595,7 @@ describe("RewardManagerV2", function () {
     it("should claim reward", async function () {
       await mineBlocks(100);
       const poolReward = rewardAmount
-        .div(rewardCycleBlocks)
+        .div(rewardCycle)
         .mul(BigNumber.from("101"))
         .mul(protocol1Cover)
         .div(protocol1Cover.add(protocol2Cover));
@@ -659,7 +659,7 @@ describe("RewardManagerV2", function () {
 
       await mineBlocks(100);
       const poolReward = rewardAmount
-        .div(rewardCycleBlocks)
+        .div(rewardCycle)
         .mul(BigNumber.from("100"))
         .mul(protocol1Cover)
         .div(protocol1Cover.add(protocol2Cover));
@@ -678,7 +678,7 @@ describe("RewardManagerV2", function () {
         .notifyRewardAmount(rewardAmount1);
       await mineBlocks(100);
       let remaining1 = rewardAmount1.sub(
-        rewardAmount1.div(rewardCycleBlocks).mul(BigNumber.from("101"))
+        rewardAmount1.div(rewardCycle).mul(BigNumber.from("101"))
       );
       let rewardAmount2 = ethers.utils.parseUnits("200", 18);
       await rewardManagerV2
@@ -686,19 +686,19 @@ describe("RewardManagerV2", function () {
         .notifyRewardAmount(rewardAmount2);
 
       expect(await rewardManagerV2.rewardPerBlocks(0)).to.be.equal(
-        rewardAmount1.div(rewardCycleBlocks)
+        rewardAmount1.div(rewardCycle)
       );
       expect(await rewardManagerV2.rewardPerBlocks(1)).to.be.equal(
-        rewardAmount2.add(remaining1).div(rewardCycleBlocks)
+        rewardAmount2.add(remaining1).div(rewardCycle)
       );
       await mineBlocks(200);
       const poolReward = rewardAmount1
-        .div(rewardCycleBlocks)
+        .div(rewardCycle)
         .mul(BigNumber.from("101"))
         .add(
           rewardAmount2
             .add(remaining1)
-            .div(rewardCycleBlocks)
+            .div(rewardCycle)
             .mul(BigNumber.from("200"))
         )
         .mul(protocol1Cover)
@@ -716,40 +716,40 @@ describe("RewardManagerV2", function () {
       await rewardManagerV2
         .connect(rewardDistribution)
         .notifyRewardAmount(rewardAmount1);
-      await mineBlocks(rewardCycleBlocks.add(BigNumber.from("20")).toNumber());
+      await mineBlocks(rewardCycle.add(BigNumber.from("20")).toNumber());
       let rewardAmount2 = ethers.utils.parseUnits("200", 18);
       await rewardManagerV2
         .connect(rewardDistribution)
         .notifyRewardAmount(rewardAmount2);
 
       expect(await rewardManagerV2.rewardPerBlocks(0)).to.be.equal(
-        rewardAmount1.div(rewardCycleBlocks)
+        rewardAmount1.div(rewardCycle)
       );
       expect(await rewardManagerV2.rewardPerBlocks(1)).to.be.equal(
-        rewardAmount2.div(rewardCycleBlocks)
+        rewardAmount2.div(rewardCycle)
       );
       await mineBlocks(200);
       let rewardAmount3 = ethers.utils.parseUnits("150", 18);
       let remaining2 = rewardAmount2.sub(
-        rewardAmount2.div(rewardCycleBlocks).mul(BigNumber.from("201"))
+        rewardAmount2.div(rewardCycle).mul(BigNumber.from("201"))
       );
       await mineBlocks(150);
-      console.log(rewardAmount1.div(rewardCycleBlocks).toString());
+      console.log(rewardAmount1.div(rewardCycle).toString());
       console.log(
         rewardAmount1
-          .div(rewardCycleBlocks)
-          .mul(rewardCycleBlocks)
-          .add(rewardAmount2.div(rewardCycleBlocks).mul(BigNumber.from("200")))
+          .div(rewardCycle)
+          .mul(rewardCycle)
+          .add(rewardAmount2.div(rewardCycle).mul(BigNumber.from("200")))
           .toString()
       );
       const poolReward = rewardAmount1
-        .div(rewardCycleBlocks)
-        .mul(rewardCycleBlocks)
-        .add(rewardAmount2.div(rewardCycleBlocks).mul(BigNumber.from("200")))
+        .div(rewardCycle)
+        .mul(rewardCycle)
+        .add(rewardAmount2.div(rewardCycle).mul(BigNumber.from("200")))
         .add(
           rewardAmount3
             .add(remaining2)
-            .div(rewardCycleBlocks)
+            .div(rewardCycle)
             .mul(BigNumber.from("150"))
         )
         .mul(protocol1Cover)
