@@ -24,18 +24,7 @@ contract RewardManagerV2 is BalanceWrapper, ArmorModule, IRewardManagerV2 {
 
     struct UserInfo {
         uint256 amount; // How many LP tokens the user has provided.
-        uint256 rewardDebt; // Reward debt. See explanation below.
-        //
-        // We do some fancy math here. Basically, any point in time, the amount of SUSHIs
-        // entitled to a user but is pending to be distributed is:
-        //
-        //   pending reward = (user.amount * pool.accEthPerShare) - user.rewardDebt
-        //
-        // Whenever a user deposits or withdraws LP tokens to a pool. Here's what happens:
-        //   1. The pool's `accEthPerShare` (and `lastRewardBlock`) gets updated.
-        //   2. User receives the pending reward sent to his/her address.
-        //   3. User's `amount` gets updated.
-        //   4. User's `rewardDebt` gets updated.
+        uint256 rewardDebt; // Reward debt.
     }
     struct PoolInfo {
         address protocol; // Address of protocol contract.
@@ -43,17 +32,19 @@ contract RewardManagerV2 is BalanceWrapper, ArmorModule, IRewardManagerV2 {
         uint256 allocPoint; // Allocation of protocol.
         uint256 lastRewardBlock; // Last block number that SUSHIs distribution occurs.
         uint256 accEthPerShare; // Accumulated SUSHIs per share, times 1e12. See below.
-        uint256 lastRewardPerBlockIdx; // Last rewardPerBlock used.
+        uint256 rewardDebt; // Pool Reward debt. 
     }
 
     IERC20 public rewardToken;
 
     uint256 public totalAllocPoint;
+    uint256 public accEthPerAlloc;
+    uint256 public lastRewardBlock;
+    uint256 public rewardPerBlock;
+    uint256 public rewardCycleEnd;
+    uint256 public usedReward;
 
-    uint256[] public rewardPerBlocks;
-    uint256[] public rewardUpdatedBlocks;
-
-    uint256 public rewardCycleBlocks;
+    uint256 public rewardCycle;
     uint256 public lastReward;
 
     mapping(address => PoolInfo) public poolInfo;
@@ -67,18 +58,7 @@ contract RewardManagerV2 is BalanceWrapper, ArmorModule, IRewardManagerV2 {
         initializeModule(_armorMaster);
         rewardToken = IERC20(_rewardToken);
         require (_rewardCycleBlocks > 0, "Invalid cycle blocks");
-        rewardCycleBlocks = _rewardCycleBlocks;
-    }
-
-    function initPool(address _protocol) override public onlyModules("PLAN", "STAKE")  {
-        require(_protocol != address(0), "zero address!");
-        PoolInfo storage pool = poolInfo[_protocol];
-        require(pool.protocol == address(0), "already initialized");
-        pool.protocol = _protocol;
-        pool.lastRewardBlock = block.number;
-        pool.lastRewardPerBlockIdx = rewardPerBlocks.length > 0 ? rewardPerBlocks.length.sub(1) : 0;
-        pool.allocPoint = IPlanManager(_master.getModule("PLAN")).totalUsedCover(_protocol);
-        totalAllocPoint = totalAllocPoint.add(pool.allocPoint);
+        rewardCycle = _rewardCycleBlocks;
     }
 
     function notifyRewardAmount(uint256 reward) override external payable onlyModule("BALANCE") {
@@ -90,21 +70,43 @@ contract RewardManagerV2 is BalanceWrapper, ArmorModule, IRewardManagerV2 {
             rewardToken.safeTransferFrom(msg.sender, address(this), reward);
         }
 
-        uint remainingReward;
-        if (rewardPerBlocks.length > 0) {
-            uint256 lastIdx = rewardPerBlocks.length - 1;
-            uint256 usedReward = Math.min(rewardCycleBlocks, block.number.sub(rewardUpdatedBlocks[lastIdx])).mul(rewardPerBlocks[lastIdx]);
-            if (usedReward < lastReward) {
-                remainingReward = lastReward.sub(usedReward);
-            }
-        }
+        updateReward();
+        uint remainingReward = lastReward > usedReward ? lastReward.sub(usedReward) : 0;
         lastReward = reward.add(remainingReward);
-        uint256 _rewardPerBlock = lastReward.div(rewardCycleBlocks);
-        rewardPerBlocks.push(_rewardPerBlock);
-        rewardUpdatedBlocks.push(block.number);
+        usedReward = 0;
+        rewardCycleEnd = lastRewardBlock.add(rewardCycle);
+        rewardPerBlock = lastReward.div(rewardCycle);
+    }
+
+    function updateReward() public {
+        if (block.number <= lastRewardBlock) {
+            return;
+        }
+
+        if (totalAllocPoint == 0) {
+            return;
+        }
+
+        uint256 reward = Math.min(rewardCycleEnd, block.number).sub(lastRewardBlock).mul(rewardPerBlock);
+        usedReward = usedReward.add(reward);
+        accEthPerAlloc = accEthPerAlloc.add(reward.mul(1e12).div(totalAllocPoint));
+        lastRewardBlock = block.number;
+    }
+
+    function initPool(address _protocol) override public onlyModules("PLAN", "STAKE")  {
+        require(_protocol != address(0), "zero address!");
+        PoolInfo storage pool = poolInfo[_protocol];
+        require(pool.protocol == address(0), "already initialized");
+        updateReward();
+        pool.protocol = _protocol;
+        pool.lastRewardBlock = block.number;
+        pool.allocPoint = IPlanManager(_master.getModule("PLAN")).totalUsedCover(_protocol);
+        totalAllocPoint = totalAllocPoint.add(pool.allocPoint);
+        pool.rewardDebt = pool.totalStaked.mul(accEthPerAlloc).div(1e12);
     }
 
     function updateAllocPoint(address _protocol, uint256 _allocPoint) override external onlyModule("PLAN")  {
+        updateReward();
         PoolInfo storage pool = poolInfo[_protocol];
         if (poolInfo[_protocol].protocol == address(0)) {
             initPool(_protocol);
@@ -173,21 +175,6 @@ contract RewardManagerV2 is BalanceWrapper, ArmorModule, IRewardManagerV2 {
         }
     }
 
-    function getPoolReward(address _protocol) public view returns (uint256 reward) {
-        PoolInfo memory pool = poolInfo[_protocol];
-        if (pool.protocol == address(0)) {
-            return 0;
-        }
-        uint256 from = Math.max(pool.lastRewardBlock, rewardUpdatedBlocks[0]);
-        for (uint256 i = pool.lastRewardPerBlockIdx; i < rewardPerBlocks.length - 1; i += 1) {
-            uint256 to = rewardUpdatedBlocks[i + 1];
-            reward = reward.add(Math.min(to.sub(from), rewardCycleBlocks).mul(rewardPerBlocks[i]));
-            from = to;
-        }
-        reward = reward.add(Math.min(block.number.sub(from), rewardCycleBlocks).mul(rewardPerBlocks[rewardPerBlocks.length - 1]));
-        reward = reward.mul(pool.allocPoint).div(totalAllocPoint);
-    }
-
     function updatePool(address _protocol) public {
         PoolInfo storage pool = poolInfo[_protocol];
         if (block.number <= pool.lastRewardBlock) {
@@ -198,12 +185,14 @@ contract RewardManagerV2 is BalanceWrapper, ArmorModule, IRewardManagerV2 {
             return;
         }
 
-        uint256 poolReward = getPoolReward(_protocol);
+        updateReward();
+        uint poolReward = pool.totalStaked.mul(accEthPerAlloc).div(1e12).sub(
+            pool.rewardDebt
+        );
         pool.accEthPerShare = pool.accEthPerShare.add(
             poolReward.mul(1e12).div(pool.totalStaked)
         );
         pool.lastRewardBlock = block.number;
-        pool.lastRewardPerBlockIdx = rewardPerBlocks.length.sub(1);
     }
     
     function safeRewardTransfer(address _to, uint256 _amount) internal {
