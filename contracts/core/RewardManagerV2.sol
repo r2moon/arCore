@@ -93,7 +93,7 @@ contract RewardManagerV2 is BalanceWrapper, ArmorModule, IRewardManagerV2 {
         uint remainingReward;
         if (rewardPerBlocks.length > 0) {
             uint256 lastIdx = rewardPerBlocks.length - 1;
-            uint256 usedReward = block.number.sub(rewardUpdatedBlocks[lastIdx]).mul(rewardPerBlocks[lastIdx]);
+            uint256 usedReward = Math.min(rewardCycleBlocks, block.number.sub(rewardUpdatedBlocks[lastIdx])).mul(rewardPerBlocks[lastIdx]);
             if (usedReward < lastReward) {
                 remainingReward = lastReward.sub(usedReward);
             }
@@ -117,34 +117,36 @@ contract RewardManagerV2 is BalanceWrapper, ArmorModule, IRewardManagerV2 {
 
     function deposit(address _user, address _protocol, uint256 _amount) override external onlyModule("STAKE") {
         PoolInfo storage pool = poolInfo[_protocol];
+        UserInfo storage user = userInfo[_protocol][_user];
         if (pool.protocol == address(0)) {
             initPool(_protocol);
         } else {
             updatePool(_protocol);
-        }
-        UserInfo storage user = userInfo[_protocol][_user];
-        if (user.amount > 0) {
-            uint256 pending =
-                user.amount.mul(pool.accArmorPerShare).div(1e12).sub(
-                    user.rewardDebt
-                );
-            safeRewardTransfer(_user, pending);
+            if (user.amount > 0) {
+                uint256 pending =
+                    user.amount.mul(pool.accArmorPerShare).div(1e12).sub(
+                        user.rewardDebt
+                    );
+                safeRewardTransfer(_user, pending);
+            }
         }
         user.amount = user.amount.add(_amount);
         user.rewardDebt = user.amount.mul(pool.accArmorPerShare).div(1e12);
         pool.totalStaked = pool.totalStaked.add(_amount);
     }
-    
-    function withdraw(address _user, address _protocol, uint256 _amount) override public onlyModules("BALANCE", "STAKE"){
+
+    function withdraw(address _user, address _protocol, uint256 _amount) override public onlyModule("STAKE") {
         PoolInfo storage pool = poolInfo[_protocol];
         UserInfo storage user = userInfo[_protocol][_user];
-        require(user.amount >= _amount, "withdraw: not good");
+        require(user.amount >= _amount, "insufficient to withdraw");
         updatePool(_protocol);
         uint256 pending =
             user.amount.mul(pool.accArmorPerShare).div(1e12).sub(
                 user.rewardDebt
             );
-        safeRewardTransfer(_user, pending);
+        if (pending > 0) {
+            safeRewardTransfer(_user, pending);
+        }
         user.amount = user.amount.sub(_amount);
         user.rewardDebt = user.amount.mul(pool.accArmorPerShare).div(1e12);
         pool.totalStaked = pool.totalStaked.sub(_amount);
@@ -159,7 +161,9 @@ contract RewardManagerV2 is BalanceWrapper, ArmorModule, IRewardManagerV2 {
             user.amount.mul(pool.accArmorPerShare).div(1e12).sub(
                 user.rewardDebt
             );
-        safeRewardTransfer(msg.sender, pending);
+        if (pending > 0) {
+            safeRewardTransfer(msg.sender, pending);
+        }
         user.rewardDebt = user.amount.mul(pool.accArmorPerShare).div(1e12);
     }
 
@@ -171,13 +175,16 @@ contract RewardManagerV2 is BalanceWrapper, ArmorModule, IRewardManagerV2 {
 
     function getPoolReward(address _protocol) public view returns (uint256 reward) {
         PoolInfo memory pool = poolInfo[_protocol];
+        if (pool.protocol == address(0)) {
+            return 0;
+        }
         uint256 from = Math.max(pool.lastRewardBlock, rewardUpdatedBlocks[0]);
         for (uint256 i = pool.lastRewardPerBlockIdx; i < rewardPerBlocks.length - 1; i += 1) {
             uint256 to = rewardUpdatedBlocks[i + 1];
             reward = reward.add(Math.min(to.sub(from), rewardCycleBlocks).mul(rewardPerBlocks[i]));
             from = to;
         }
-        reward = reward.add(block.number.sub(from).mul(rewardPerBlocks[rewardPerBlocks.length - 1]));
+        reward = reward.add(Math.min(block.number.sub(from), rewardCycleBlocks).mul(rewardPerBlocks[rewardPerBlocks.length - 1]));
         reward = reward.mul(pool.allocPoint).div(totalAllocPoint);
     }
 
