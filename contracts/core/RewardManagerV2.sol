@@ -29,10 +29,10 @@ contract RewardManagerV2 is BalanceWrapper, ArmorModule, IRewardManagerV2 {
         // We do some fancy math here. Basically, any point in time, the amount of SUSHIs
         // entitled to a user but is pending to be distributed is:
         //
-        //   pending reward = (user.amount * pool.accArmorPerShare) - user.rewardDebt
+        //   pending reward = (user.amount * pool.accEthPerShare) - user.rewardDebt
         //
         // Whenever a user deposits or withdraws LP tokens to a pool. Here's what happens:
-        //   1. The pool's `accArmorPerShare` (and `lastRewardBlock`) gets updated.
+        //   1. The pool's `accEthPerShare` (and `lastRewardBlock`) gets updated.
         //   2. User receives the pending reward sent to his/her address.
         //   3. User's `amount` gets updated.
         //   4. User's `rewardDebt` gets updated.
@@ -42,7 +42,7 @@ contract RewardManagerV2 is BalanceWrapper, ArmorModule, IRewardManagerV2 {
         uint256 totalStaked; // Total staked amount in the pool
         uint256 allocPoint; // Allocation of protocol.
         uint256 lastRewardBlock; // Last block number that SUSHIs distribution occurs.
-        uint256 accArmorPerShare; // Accumulated SUSHIs per share, times 1e12. See below.
+        uint256 accEthPerShare; // Accumulated SUSHIs per share, times 1e12. See below.
         uint256 lastRewardPerBlockIdx; // Last rewardPerBlock used.
     }
 
@@ -124,14 +124,14 @@ contract RewardManagerV2 is BalanceWrapper, ArmorModule, IRewardManagerV2 {
             updatePool(_protocol);
             if (user.amount > 0) {
                 uint256 pending =
-                    user.amount.mul(pool.accArmorPerShare).div(1e12).sub(
+                    user.amount.mul(pool.accEthPerShare).div(1e12).sub(
                         user.rewardDebt
                     );
                 safeRewardTransfer(_user, pending);
             }
         }
         user.amount = user.amount.add(_amount);
-        user.rewardDebt = user.amount.mul(pool.accArmorPerShare).div(1e12);
+        user.rewardDebt = user.amount.mul(pool.accEthPerShare).div(1e12);
         pool.totalStaked = pool.totalStaked.add(_amount);
     }
 
@@ -141,14 +141,14 @@ contract RewardManagerV2 is BalanceWrapper, ArmorModule, IRewardManagerV2 {
         require(user.amount >= _amount, "insufficient to withdraw");
         updatePool(_protocol);
         uint256 pending =
-            user.amount.mul(pool.accArmorPerShare).div(1e12).sub(
+            user.amount.mul(pool.accEthPerShare).div(1e12).sub(
                 user.rewardDebt
             );
         if (pending > 0) {
             safeRewardTransfer(_user, pending);
         }
         user.amount = user.amount.sub(_amount);
-        user.rewardDebt = user.amount.mul(pool.accArmorPerShare).div(1e12);
+        user.rewardDebt = user.amount.mul(pool.accEthPerShare).div(1e12);
         pool.totalStaked = pool.totalStaked.sub(_amount);
     }
 
@@ -158,13 +158,13 @@ contract RewardManagerV2 is BalanceWrapper, ArmorModule, IRewardManagerV2 {
 
         updatePool(_protocol);
         uint256 pending =
-            user.amount.mul(pool.accArmorPerShare).div(1e12).sub(
+            user.amount.mul(pool.accEthPerShare).div(1e12).sub(
                 user.rewardDebt
             );
         if (pending > 0) {
             safeRewardTransfer(msg.sender, pending);
         }
-        user.rewardDebt = user.amount.mul(pool.accArmorPerShare).div(1e12);
+        user.rewardDebt = user.amount.mul(pool.accEthPerShare).div(1e12);
     }
 
     function claimRewardInBatch(address[] calldata _protocols) external {
@@ -199,7 +199,7 @@ contract RewardManagerV2 is BalanceWrapper, ArmorModule, IRewardManagerV2 {
         }
 
         uint256 poolReward = getPoolReward(_protocol);
-        pool.accArmorPerShare = pool.accArmorPerShare.add(
+        pool.accEthPerShare = pool.accEthPerShare.add(
             poolReward.mul(1e12).div(pool.totalStaked)
         );
         pool.lastRewardBlock = block.number;
