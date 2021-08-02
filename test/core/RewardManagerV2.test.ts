@@ -16,14 +16,11 @@ function generateRandomAddress(): string {
 describe("RewardManagerV2", function () {
   let accounts: Signer[];
   let rewardManagerV2: Contract;
-  let rewardManagerV2ETH: Contract;
   let stakeManager: Signer;
   let planManager: Contract;
-  let token: Contract;
   let master: Contract;
 
   let alice: Signer;
-  let bob: Signer;
   let owner: Signer;
   let rewardDistribution: Signer;
   let rewardCycle = BigNumber.from("8640"); // 1 day
@@ -36,7 +33,6 @@ describe("RewardManagerV2", function () {
   beforeEach(async function () {
     accounts = await ethers.getSigners();
     alice = accounts[4];
-    bob = accounts[5];
     owner = accounts[0];
     rewardDistribution = accounts[2];
     stakeManager = accounts[1];
@@ -44,9 +40,6 @@ describe("RewardManagerV2", function () {
     const MasterFactory = await ethers.getContractFactory("ArmorMaster");
     master = await MasterFactory.deploy();
     await master.connect(owner).initialize();
-
-    const TokenFactory = await ethers.getContractFactory("ERC20Mock");
-    token = await TokenFactory.connect(owner).deploy();
 
     const RewardFactoryV2 = await ethers.getContractFactory("RewardManagerV2");
     rewardManagerV2 = await RewardFactoryV2.deploy();
@@ -293,7 +286,7 @@ describe("RewardManagerV2", function () {
       await expect(
         rewardManagerV2
           .connect(owner)
-          .deposit(await alice.getAddress(), protocol1, amount)
+          .deposit(await alice.getAddress(), protocol1, amount, 1)
       ).to.be.revertedWith("only module STAKE can call this function");
     });
 
@@ -305,7 +298,7 @@ describe("RewardManagerV2", function () {
 
       await rewardManagerV2
         .connect(stakeManager)
-        .deposit(await alice.getAddress(), protocol3, amount);
+        .deposit(await alice.getAddress(), protocol3, amount, 1);
 
       let currentBlock = await getBlockNumber();
       expect(await rewardManagerV2.totalAllocPoint()).to.equal(
@@ -342,7 +335,7 @@ describe("RewardManagerV2", function () {
       );
       await rewardManagerV2
         .connect(stakeManager)
-        .deposit(await alice.getAddress(), protocol1, amount);
+        .deposit(await alice.getAddress(), protocol1, amount, 1);
 
       let currentBlock = await getBlockNumber();
       let pool = await rewardManagerV2.poolInfo(protocol1);
@@ -361,7 +354,7 @@ describe("RewardManagerV2", function () {
       await mineBlocks(100);
       await rewardManagerV2
         .connect(stakeManager)
-        .deposit(await alice.getAddress(), protocol1, "0");
+        .deposit(await alice.getAddress(), protocol1, "0", 1);
       currentBlock = await getBlockNumber();
       const accEthPerAlloc = rewardAmount
         .div(rewardCycle)
@@ -406,7 +399,7 @@ describe("RewardManagerV2", function () {
 
       await rewardManagerV2
         .connect(stakeManager)
-        .deposit(await alice.getAddress(), protocol1, depositAmount);
+        .deposit(await alice.getAddress(), protocol1, depositAmount, 1);
     });
 
     it("should fail if msg.sender is not stake manager", async function () {
@@ -414,7 +407,7 @@ describe("RewardManagerV2", function () {
       await expect(
         rewardManagerV2
           .connect(owner)
-          .withdraw(await alice.getAddress(), protocol1, amount)
+          .withdraw(await alice.getAddress(), protocol1, amount, 1)
       ).to.be.revertedWith("only module STAKE can call this function");
     });
 
@@ -423,7 +416,7 @@ describe("RewardManagerV2", function () {
       await expect(
         rewardManagerV2
           .connect(stakeManager)
-          .withdraw(await alice.getAddress(), protocol1, amount)
+          .withdraw(await alice.getAddress(), protocol1, amount, 1)
       ).to.be.revertedWith("insufficient to withdraw");
     });
 
@@ -435,7 +428,7 @@ describe("RewardManagerV2", function () {
       await mineBlocks(100);
       await rewardManagerV2
         .connect(stakeManager)
-        .withdraw(await alice.getAddress(), protocol1, amount);
+        .withdraw(await alice.getAddress(), protocol1, amount, 1);
       let currentBlock = await getBlockNumber();
       const accEthPerAlloc = rewardAmount
         .div(rewardCycle)
@@ -481,7 +474,7 @@ describe("RewardManagerV2", function () {
 
       await rewardManagerV2
         .connect(stakeManager)
-        .deposit(await alice.getAddress(), protocol1, depositAmount);
+        .deposit(await alice.getAddress(), protocol1, depositAmount, 1);
     });
 
     it("should claim reward", async function () {
@@ -537,7 +530,7 @@ describe("RewardManagerV2", function () {
 
       await rewardManagerV2
         .connect(stakeManager)
-        .deposit(await alice.getAddress(), protocol1, depositAmount);
+        .deposit(await alice.getAddress(), protocol1, depositAmount, 1);
     });
 
     it("should claim reward", async function () {
@@ -593,7 +586,7 @@ describe("RewardManagerV2", function () {
 
       await rewardManagerV2
         .connect(stakeManager)
-        .deposit(await alice.getAddress(), protocol1, depositAmount);
+        .deposit(await alice.getAddress(), protocol1, depositAmount, 1);
     });
 
     it("should return pending rewards", async function () {
@@ -628,7 +621,7 @@ describe("RewardManagerV2", function () {
 
       await rewardManagerV2
         .connect(stakeManager)
-        .deposit(await alice.getAddress(), protocol1, depositAmount);
+        .deposit(await alice.getAddress(), protocol1, depositAmount, 1);
     });
 
     it("should return pending rewards", async function () {

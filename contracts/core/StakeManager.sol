@@ -330,7 +330,7 @@ contract StakeManager is ArmorModule, ExpireTracker, IStakeManager {
     function _addCovers(address _user, uint256 _nftId, uint256 _coverAmount, uint256 _coverPrice, address _protocol)
       internal
     {
-        IRewardManagerV2(getModule("REWARDV2")).deposit(_user, _protocol, _coverPrice);
+        IRewardManagerV2(getModule("REWARDV2")).deposit(_user, _protocol, _coverPrice, _nftId);
         totalStakedAmount[_protocol] = totalStakedAmount[_protocol].add(_coverAmount);
     }
     
@@ -360,7 +360,7 @@ contract StakeManager is ArmorModule, ExpireTracker, IStakeManager {
           }
         }
         if (remaining > 0) {
-            IRewardManagerV2(getModule("REWARDV2")).withdraw(_user, _protocol, remaining);
+            IRewardManagerV2(getModule("REWARDV2")).withdraw(_user, _protocol, remaining, _nftId);
         }
 
         if (!submitted[_nftId]) totalStakedAmount[_protocol] = totalStakedAmount[_protocol].sub(_coverAmount);

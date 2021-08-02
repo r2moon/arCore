@@ -17,6 +17,22 @@ import "hardhat/console.sol";
 
 contract RewardManagerV2 is BalanceWrapper, ArmorModule, IRewardManagerV2 {
     event RewardPaid(address indexed user, uint256 reward, uint256 timestamp);
+    event BalanceAdded(
+        address indexed user,
+        address indexed protocol,
+        uint256 indexed nftId,
+        uint256 amount,
+        uint256 totalStaked,
+        uint256 timestamp
+    );
+    event BalanceWithdrawn(
+        address indexed user,
+        address indexed protocol,
+        uint256 indexed nftId,
+        uint256 amount,
+        uint256 totalStaked,
+        uint256 timestamp
+    );
 
     struct UserInfo {
         uint256 amount; // How many LP tokens the user has provided.
@@ -131,7 +147,8 @@ contract RewardManagerV2 is BalanceWrapper, ArmorModule, IRewardManagerV2 {
     function deposit(
         address _user,
         address _protocol,
-        uint256 _amount
+        uint256 _amount,
+        uint256 _nftId
     ) external override onlyModule("STAKE") {
         PoolInfo storage pool = poolInfo[_protocol];
         UserInfo storage user = userInfo[_protocol][_user];
@@ -151,12 +168,22 @@ contract RewardManagerV2 is BalanceWrapper, ArmorModule, IRewardManagerV2 {
         user.amount = user.amount.add(_amount);
         user.rewardDebt = user.amount.mul(pool.accEthPerShare).div(1e12);
         pool.totalStaked = pool.totalStaked.add(_amount);
+
+        emit BalanceAdded(
+            _user,
+            _protocol,
+            _nftId,
+            _amount,
+            pool.totalStaked,
+            block.timestamp
+        );
     }
 
     function withdraw(
         address _user,
         address _protocol,
-        uint256 _amount
+        uint256 _amount,
+        uint256 _nftId
     ) public override onlyModule("STAKE") {
         PoolInfo storage pool = poolInfo[_protocol];
         UserInfo storage user = userInfo[_protocol][_user];
@@ -171,6 +198,15 @@ contract RewardManagerV2 is BalanceWrapper, ArmorModule, IRewardManagerV2 {
         user.amount = user.amount.sub(_amount);
         user.rewardDebt = user.amount.mul(pool.accEthPerShare).div(1e12);
         pool.totalStaked = pool.totalStaked.sub(_amount);
+
+        emit BalanceWithdrawn(
+            _user,
+            _protocol,
+            _nftId,
+            _amount,
+            pool.totalStaked,
+            block.timestamp
+        );
     }
 
     function claimReward(address _protocol) public {
