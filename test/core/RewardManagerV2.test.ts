@@ -312,11 +312,19 @@ describe("RewardManagerV2", function () {
         protocol1Cover.add(protocol2Cover.add(protocol3Cover))
       );
       let pool = await rewardManagerV2.poolInfo(protocol3);
+      const accEthPerAlloc = rewardAmount
+        .div(rewardCycle)
+        .mul(BigNumber.from("2"))
+        .mul(rewardUnit)
+        .div(protocol1Cover.add(protocol2Cover));
+      expect(await rewardManagerV2.accEthPerAlloc()).to.equal(accEthPerAlloc);
       expect(pool.protocol).to.equal(protocol3);
       expect(pool.totalStaked).to.equal(amount);
       expect(pool.allocPoint).to.equal(protocol3Cover);
       expect(pool.lastRewardBlock).to.equal(currentBlock);
-      expect(pool.rewardDebt).to.equal(0);
+      expect(pool.rewardDebt).to.equal(
+        protocol3Cover.mul(accEthPerAlloc).div(rewardUnit)
+      );
       expect(pool.accEthPerShare).to.equal(0);
 
       let userInfo = await rewardManagerV2.userInfo(
