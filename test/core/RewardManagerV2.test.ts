@@ -100,11 +100,11 @@ describe("RewardManagerV2", function () {
       await rewardManagerV2.connect(stakeManager).initPool(protocol1);
       let currentBlock = await getBlockNumber();
       expect(await rewardManagerV2.totalAllocPoint()).to.equal(protocol1Cover);
+      expect(await rewardManagerV2.lastRewardBlock()).to.equal(currentBlock);
       let pool = await rewardManagerV2.poolInfo(protocol1);
       expect(pool.protocol).to.equal(protocol1);
       expect(pool.totalStaked).to.equal(0);
       expect(pool.allocPoint).to.equal(protocol1Cover);
-      expect(pool.lastRewardBlock).to.equal(currentBlock);
       expect(pool.accEthPerShare).to.equal(0);
       expect(pool.rewardDebt).to.equal(0);
     });
@@ -123,7 +123,6 @@ describe("RewardManagerV2", function () {
       expect(pool.protocol).to.equal(protocol1);
       expect(pool.totalStaked).to.equal(0);
       expect(pool.allocPoint).to.equal(protocol1Cover);
-      // expect(pool.lastRewardBlock).to.equal(currentBlock);
       expect(pool.accEthPerShare).to.equal(0);
       expect(pool.rewardDebt).to.equal(0);
     });
@@ -311,10 +310,10 @@ describe("RewardManagerV2", function () {
         .mul(rewardUnit)
         .div(protocol1Cover.add(protocol2Cover));
       expect(await rewardManagerV2.accEthPerAlloc()).to.equal(accEthPerAlloc);
+      expect(await rewardManagerV2.lastRewardBlock()).to.equal(currentBlock);
       expect(pool.protocol).to.equal(protocol3);
       expect(pool.totalStaked).to.equal(amount);
       expect(pool.allocPoint).to.equal(protocol3Cover);
-      expect(pool.lastRewardBlock).to.equal(currentBlock);
       expect(pool.rewardDebt).to.equal(
         protocol3Cover.mul(accEthPerAlloc).div(rewardUnit)
       );
@@ -337,10 +336,8 @@ describe("RewardManagerV2", function () {
         .connect(stakeManager)
         .deposit(await alice.getAddress(), protocol1, amount, 1);
 
-      let currentBlock = await getBlockNumber();
       let pool = await rewardManagerV2.poolInfo(protocol1);
       expect(pool.totalStaked).to.equal(amount);
-      expect(pool.lastRewardBlock).to.equal(currentBlock);
       expect(pool.accEthPerShare).to.equal(0);
       expect(pool.rewardDebt).to.equal(0);
 
@@ -355,7 +352,7 @@ describe("RewardManagerV2", function () {
       await rewardManagerV2
         .connect(stakeManager)
         .deposit(await alice.getAddress(), protocol1, "0", 1);
-      currentBlock = await getBlockNumber();
+      let currentBlock = await getBlockNumber();
       const accEthPerAlloc = rewardAmount
         .div(rewardCycle)
         .mul(BigNumber.from("102"))
@@ -364,9 +361,9 @@ describe("RewardManagerV2", function () {
       expect(await rewardManagerV2.accEthPerAlloc()).to.equal(accEthPerAlloc);
       const poolReward = accEthPerAlloc.mul(protocol1Cover).div(rewardUnit);
       const accEthPerShare = poolReward.mul(rewardUnit).div(amount);
+      expect(await rewardManagerV2.lastRewardBlock()).to.equal(currentBlock);
       pool = await rewardManagerV2.poolInfo(protocol1);
       expect(pool.totalStaked).to.equal(amount);
-      expect(pool.lastRewardBlock).to.equal(currentBlock);
       expect(pool.accEthPerShare).to.equal(accEthPerShare);
       expect(pool.rewardDebt).to.equal(poolReward);
       const balanceAfter = await owner.provider.getBalance(
@@ -438,9 +435,9 @@ describe("RewardManagerV2", function () {
       expect(await rewardManagerV2.accEthPerAlloc()).to.equal(accEthPerAlloc);
       const poolReward = accEthPerAlloc.mul(protocol1Cover).div(rewardUnit);
       const accEthPerShare = poolReward.mul(rewardUnit).div(depositAmount);
+      expect(await rewardManagerV2.lastRewardBlock()).to.equal(currentBlock);
       let pool = await rewardManagerV2.poolInfo(protocol1);
       expect(pool.totalStaked).to.equal(depositAmount.sub(amount));
-      expect(pool.lastRewardBlock).to.equal(currentBlock);
       expect(pool.accEthPerShare).to.equal(accEthPerShare);
       expect(pool.rewardDebt).to.equal(poolReward);
 
@@ -494,9 +491,9 @@ describe("RewardManagerV2", function () {
       expect(await rewardManagerV2.accEthPerAlloc()).to.equal(accEthPerAlloc);
       const poolReward = accEthPerAlloc.mul(protocol1Cover).div(rewardUnit);
       const accEthPerShare = poolReward.mul(rewardUnit).div(depositAmount);
+      expect(await rewardManagerV2.lastRewardBlock()).to.equal(currentBlock);
       let pool = await rewardManagerV2.poolInfo(protocol1);
       expect(pool.totalStaked).to.equal(depositAmount);
-      expect(pool.lastRewardBlock).to.equal(currentBlock);
       expect(pool.accEthPerShare).to.equal(accEthPerShare);
       expect(pool.rewardDebt).to.equal(poolReward);
 
@@ -550,9 +547,9 @@ describe("RewardManagerV2", function () {
       expect(await rewardManagerV2.accEthPerAlloc()).to.equal(accEthPerAlloc);
       const poolReward = accEthPerAlloc.mul(protocol1Cover).div(rewardUnit);
       const accEthPerShare = poolReward.mul(rewardUnit).div(depositAmount);
+      expect(await rewardManagerV2.lastRewardBlock()).to.equal(currentBlock);
       let pool = await rewardManagerV2.poolInfo(protocol1);
       expect(pool.totalStaked).to.equal(depositAmount);
-      expect(pool.lastRewardBlock).to.equal(currentBlock);
       expect(pool.accEthPerShare).to.equal(accEthPerShare);
       expect(pool.rewardDebt).to.equal(poolReward);
 
@@ -640,6 +637,72 @@ describe("RewardManagerV2", function () {
           protocol2,
         ])
       ).to.equal(depositAmount.mul(accEthPerShare).div(rewardUnit));
+    });
+  });
+
+  describe("#updateAllocPoint()", function () {
+    const rewardAmount = ethers.utils.parseUnits("100", 18);
+
+    beforeEach(async function () {
+      await rewardManagerV2.connect(stakeManager).initPool(protocol1);
+      await rewardManagerV2.connect(stakeManager).initPool(protocol2);
+      await rewardManagerV2
+        .connect(rewardDistribution)
+        .notifyRewardAmount({ value: rewardAmount });
+    });
+
+    it("should fail if msg.sender is not plan manager", async function () {
+      await expect(
+        rewardManagerV2.connect(owner).updateAllocPoint(protocol1, 100)
+      ).to.be.revertedWith("only module PLAN can call this function");
+    });
+
+    it("should init pool, if pool is not initialized", async function () {
+      const protocol3 = generateRandomAddress();
+      const protocol3Cover = ethers.utils.parseUnits("1500", 18);
+      await planManager.setTotalUsedCover(protocol3, protocol3Cover);
+
+      await planManager.updateAllocPoint(rewardManagerV2.address, protocol3);
+
+      let pool = await rewardManagerV2.poolInfo(protocol3);
+      const accEthPerAlloc = rewardAmount
+        .div(rewardCycle)
+        .mul(BigNumber.from("2"))
+        .mul(rewardUnit)
+        .div(protocol1Cover.add(protocol2Cover));
+      expect(await rewardManagerV2.accEthPerAlloc()).to.equal(accEthPerAlloc);
+      expect(pool.protocol).to.equal(protocol3);
+      expect(pool.totalStaked).to.equal(0);
+      expect(pool.allocPoint).to.equal(protocol3Cover);
+      expect(pool.rewardDebt).to.equal(
+        protocol3Cover.mul(accEthPerAlloc).div(rewardUnit)
+      );
+      expect(pool.accEthPerShare).to.equal(0);
+    });
+
+    it("should update pool and alloc point", async function () {
+      const newCover = BigNumber.from("40000");
+      const amount = ethers.utils.parseUnits("10", 18);
+      await rewardManagerV2
+        .connect(stakeManager)
+        .deposit(await alice.getAddress(), protocol1, amount, 1);
+      await mineBlocks(100);
+      await planManager.setTotalUsedCover(protocol1, newCover);
+      await planManager.updateAllocPoint(rewardManagerV2.address, protocol1);
+
+      let pool = await rewardManagerV2.poolInfo(protocol1);
+      const accEthPerAlloc = rewardAmount
+        .div(rewardCycle)
+        .mul(BigNumber.from("103"))
+        .mul(rewardUnit)
+        .div(protocol1Cover.add(protocol2Cover));
+      expect(await rewardManagerV2.accEthPerAlloc()).to.equal(accEthPerAlloc);
+      expect(pool.protocol).to.equal(protocol1);
+      expect(pool.totalStaked).to.equal(amount);
+      expect(pool.allocPoint).to.equal(newCover);
+      expect(pool.rewardDebt).to.equal(
+        newCover.mul(accEthPerAlloc).div(rewardUnit)
+      );
     });
   });
 });
