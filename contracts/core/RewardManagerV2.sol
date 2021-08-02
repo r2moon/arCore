@@ -62,7 +62,7 @@ contract RewardManagerV2 is BalanceWrapper, ArmorModule, IRewardManagerV2 {
         lastReward = msg.value.add(remainingReward);
         usedReward = 0;
         rewardCycleEnd = block.number.add(rewardCycle);
-        rewardPerBlock = lastReward.div(rewardCycle);
+        rewardPerBlock = lastReward.div(rewardCycle);        
     }
 
     function updateReward() public {
@@ -70,7 +70,7 @@ contract RewardManagerV2 is BalanceWrapper, ArmorModule, IRewardManagerV2 {
             return;
         }
 
-        if (totalAllocPoint == 0 || rewardCycleEnd == 0) {
+        if (rewardCycleEnd == 0 || totalAllocPoint == 0) {
             lastRewardBlock = block.number;
             return;
         }
@@ -174,14 +174,14 @@ contract RewardManagerV2 is BalanceWrapper, ArmorModule, IRewardManagerV2 {
         }
 
         updateReward();
-        uint poolReward = pool.totalStaked.mul(accEthPerAlloc).div(1e12).sub(
+        uint poolReward = pool.allocPoint.mul(accEthPerAlloc).div(1e12).sub(
             pool.rewardDebt
         );
         pool.accEthPerShare = pool.accEthPerShare.add(
             poolReward.mul(1e12).div(pool.totalStaked)
         );
         pool.lastRewardBlock = block.number;
-        pool.rewardDebt = pool.totalStaked.mul(accEthPerAlloc).div(1e12);
+        pool.rewardDebt = pool.allocPoint.mul(accEthPerAlloc).div(1e12);
     }
     
     function safeRewardTransfer(address _to, uint256 _amount) internal {
