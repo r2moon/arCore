@@ -1,8 +1,7 @@
 import { expect } from "chai";
 import { ethers } from "hardhat";
 import { Contract, Signer, BigNumber, constants } from "ethers";
-import { time } from "@openzeppelin/test-helpers";
-import { increase, mineBlocks, getBlockNumber } from "../utils";
+import {  mineBlocks, getBlockNumber } from "../utils";
 
 const rewardUnit = ethers.utils.parseUnits("1", 12);
 
