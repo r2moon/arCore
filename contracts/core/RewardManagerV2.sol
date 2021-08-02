@@ -190,4 +190,36 @@ contract RewardManagerV2 is BalanceWrapper, ArmorModule, IRewardManagerV2 {
 
         emit RewardPaid(_to, reward, block.timestamp);
     }
+
+    function getPendingReward(address _user, address _protocol) public view returns (uint) {
+        if (rewardCycleEnd == 0 || totalAllocPoint == 0) {
+            return 0;
+        }
+
+        uint256 reward = Math.min(rewardCycleEnd, block.number).sub(lastRewardBlock).mul(rewardPerBlock);
+        uint _accEthPerAlloc = accEthPerAlloc.add(reward.mul(1e12).div(totalAllocPoint));
+
+        PoolInfo memory pool = poolInfo[_protocol];
+        if (pool.protocol == address(0) || pool.totalStaked == 0) {
+            return 0;
+        }
+        uint poolReward = pool.allocPoint.mul(_accEthPerAlloc).div(1e12).sub(
+            pool.rewardDebt
+        );
+        uint _accEthPerShare = pool.accEthPerShare.add(
+            poolReward.mul(1e12).div(pool.totalStaked)
+        );
+        UserInfo memory user = userInfo[_protocol][_user];
+        return user.amount.mul(_accEthPerShare).div(1e12).sub(
+            user.rewardDebt
+        );
+    }
+
+    function getTotalPendingReward(address _user, address[] memory _protocols) external view returns (uint) {
+        uint reward;
+        for (uint i = 0; i < _protocols.length; i += 1) {
+            reward = reward.add(getPendingReward(_user, _protocols[i]));
+        }
+        return reward;
+    }
 }

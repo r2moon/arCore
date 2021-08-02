@@ -571,4 +571,74 @@ describe("RewardManagerV2", function () {
       );
     });
   });
+
+  describe("#getPendingReward()", function () {
+    const rewardAmount = ethers.utils.parseUnits("100", 18);
+    const depositAmount = ethers.utils.parseUnits("10", 18);
+
+    beforeEach(async function () {
+      await rewardManagerV2.connect(stakeManager).initPool(protocol1);
+      await rewardManagerV2.connect(stakeManager).initPool(protocol2);
+      await rewardManagerV2
+        .connect(rewardDistribution)
+        .notifyRewardAmount({ value: rewardAmount });
+
+      await rewardManagerV2
+        .connect(stakeManager)
+        .deposit(await alice.getAddress(), protocol1, depositAmount);
+    });
+
+    it("should return pending rewards", async function () {
+      await mineBlocks(100);
+      const accEthPerAlloc = rewardAmount
+        .div(rewardCycle)
+        .mul(BigNumber.from("101"))
+        .mul(rewardUnit)
+        .div(protocol1Cover.add(protocol2Cover));
+      const poolReward = accEthPerAlloc.mul(protocol1Cover).div(rewardUnit);
+      const accEthPerShare = poolReward.mul(rewardUnit).div(depositAmount);
+
+      expect(
+        await rewardManagerV2.getPendingReward(
+          await alice.getAddress(),
+          protocol1
+        )
+      ).to.equal(depositAmount.mul(accEthPerShare).div(rewardUnit));
+    });
+  });
+
+  describe("#getTotalPendingReward()", function () {
+    const rewardAmount = ethers.utils.parseUnits("100", 18);
+    const depositAmount = ethers.utils.parseUnits("10", 18);
+
+    beforeEach(async function () {
+      await rewardManagerV2.connect(stakeManager).initPool(protocol1);
+      await rewardManagerV2.connect(stakeManager).initPool(protocol2);
+      await rewardManagerV2
+        .connect(rewardDistribution)
+        .notifyRewardAmount({ value: rewardAmount });
+
+      await rewardManagerV2
+        .connect(stakeManager)
+        .deposit(await alice.getAddress(), protocol1, depositAmount);
+    });
+
+    it("should return pending rewards", async function () {
+      await mineBlocks(100);
+      const accEthPerAlloc = rewardAmount
+        .div(rewardCycle)
+        .mul(BigNumber.from("101"))
+        .mul(rewardUnit)
+        .div(protocol1Cover.add(protocol2Cover));
+      const poolReward = accEthPerAlloc.mul(protocol1Cover).div(rewardUnit);
+      const accEthPerShare = poolReward.mul(rewardUnit).div(depositAmount);
+
+      expect(
+        await rewardManagerV2.getTotalPendingReward(await alice.getAddress(), [
+          protocol1,
+          protocol2,
+        ])
+      ).to.equal(depositAmount.mul(accEthPerShare).div(rewardUnit));
+    });
+  });
 });
