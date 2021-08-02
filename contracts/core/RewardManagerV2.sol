@@ -151,10 +151,10 @@ contract RewardManagerV2 is BalanceWrapper, ArmorModule, IRewardManagerV2 {
             user.amount.mul(pool.accEthPerShare).div(1e12).sub(
                 user.rewardDebt
             );
+        user.rewardDebt = user.amount.mul(pool.accEthPerShare).div(1e12);
         if (pending > 0) {
             safeRewardTransfer(msg.sender, pending);
         }
-        user.rewardDebt = user.amount.mul(pool.accEthPerShare).div(1e12);
     }
 
     function claimRewardInBatch(address[] calldata _protocols) external {
