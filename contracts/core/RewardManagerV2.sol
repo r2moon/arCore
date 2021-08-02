@@ -42,8 +42,7 @@ contract RewardManagerV2 is BalanceWrapper, ArmorModule, IRewardManagerV2 {
         address protocol; // Address of protocol contract.
         uint256 totalStaked; // Total staked amount in the pool
         uint256 allocPoint; // Allocation of protocol.
-        uint256 lastRewardBlock; // Last block number that SUSHIs distribution occurs.
-        uint256 accEthPerShare; // Accumulated SUSHIs per share, times 1e12. See below.
+        uint256 accEthPerShare; // Accumulated ETHs per share, times 1e12. See below.
         uint256 rewardDebt; // Pool Reward debt.
     }
 
@@ -119,7 +118,6 @@ contract RewardManagerV2 is BalanceWrapper, ArmorModule, IRewardManagerV2 {
         require(pool.protocol == address(0), "already initialized");
         updateReward();
         pool.protocol = _protocol;
-        pool.lastRewardBlock = block.number;
         pool.allocPoint = IPlanManager(_master.getModule("PLAN"))
             .totalUsedCover(_protocol);
         totalAllocPoint = totalAllocPoint.add(pool.allocPoint);
@@ -231,11 +229,10 @@ contract RewardManagerV2 is BalanceWrapper, ArmorModule, IRewardManagerV2 {
 
     function updatePool(address _protocol) public {
         PoolInfo storage pool = poolInfo[_protocol];
-        if (block.number <= pool.lastRewardBlock) {
+        if (block.number <= lastRewardBlock) {
             return;
         }
         if (pool.totalStaked == 0) {
-            pool.lastRewardBlock = block.number;
             return;
         }
 
@@ -246,7 +243,6 @@ contract RewardManagerV2 is BalanceWrapper, ArmorModule, IRewardManagerV2 {
         pool.accEthPerShare = pool.accEthPerShare.add(
             poolReward.mul(1e12).div(pool.totalStaked)
         );
-        pool.lastRewardBlock = block.number;
         pool.rewardDebt = pool.allocPoint.mul(accEthPerAlloc).div(1e12);
     }
 
